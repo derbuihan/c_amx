@@ -3,4 +3,14 @@ project(c_amx C)
 
 set(CMAKE_C_STANDARD 17)
 
-add_executable(c_amx main.c)
+add_executable(c_amx
+    src/main.c
+    src/amx_matmul.c
+)
+target_include_directories(c_amx PRIVATE src ${CMAKE_SOURCE_DIR})
+
+add_executable(c_amx_tests
+    tests/test_matmul.c
+    src/amx_matmul.c
+)
+target_include_directories(c_amx_tests PRIVATE src ${CMAKE_SOURCE_DIR})
