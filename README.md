@@ -12,7 +12,12 @@ This repository is for studying Apple Silicon AMX (Apple Matrix Extensions) and 
 .
 ├── CMakeLists.txt
 ├── README.md
-├── main.c
+├── src
+│   ├── amx_matmul.c
+│   ├── amx_matmul.h
+│   └── main.c
+├── tests
+│   └── test_matmul.c
 └── reference
     ├── amx          # https://github.com/corsix/amx
     └── llvm-project # https://github.com/llvm/llvm-project
@@ -40,6 +45,20 @@ ninja
 ```
 
 After that, use `clang` / `llc` from `reference/llvm-project/build/bin/`.
+
+## Build and Run (local)
+
+```bash
+cmake -S . -B cmake-build-debug -G Ninja
+cmake --build cmake-build-debug
+./cmake-build-debug/c_amx
+```
+
+## Run Tests
+
+```bash
+./cmake-build-debug/c_amx_tests
+```
 
 ## What is AMX (quick notes)
 
@@ -173,7 +192,7 @@ Key point:
 
 - View LLVM IR from clang:
   ```bash
-  reference/llvm-project/build/bin/clang -S -emit-llvm main.c -o main.ll
+  reference/llvm-project/build/bin/clang -S -emit-llvm src/main.c -o main.ll
   ```
 - View asm from llc:
   ```bash
