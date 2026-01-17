@@ -1,10 +1,10 @@
 # AMX Study
 
-Apple Silicon の **AMX (Apple Matrix Extensions)** 命令を題材に、**clang/llvm にバックエンド（主に AArch64 拡張としての命令・intrinsic・コード生成）を追加する流れ**を学習するための個人用リポジトリです。
+This repository is for studying Apple Silicon AMX (Apple Matrix Extensions) and learning how to add backend support in clang/llvm (primarily as an AArch64 extension: instructions, intrinsics, and code generation).
 
-- 目的: 自己研鑽（LLVM の TableGen / ISel / CodeGen の理解）
-- 前提: AMX は Apple 非公開命令であり、公式サポートはありません（upstream 目的ではない）
-- 参照: `reference/amx` (corsix/amx), `reference/llvm-project` (LLVM monorepo)
+- Goal: self-study (understanding LLVM TableGen / ISel / CodeGen)
+- Assumption: AMX is undocumented by Apple and not intended for upstream support
+- References: `reference/amx` (corsix/amx), `reference/llvm-project` (LLVM monorepo)
 
 ## Repository Layout
 
@@ -21,12 +21,12 @@ Apple Silicon の **AMX (Apple Matrix Extensions)** 命令を題材に、**clang
 ## Environment
 
 - macOS on Apple Silicon (M1/M2/M3/M4)
-- clang/llvm: `reference/llvm-project` をローカルでビルドして使う
-- build system: CMake + Ninja 推奨
+- clang/llvm: build locally under `reference/llvm-project`
+- build system: CMake + Ninja recommended
 
 ## Build LLVM (local)
 
-例（Debug + AArch64 + clang のみ）:
+Example (Debug + AArch64 + clang only):
 
 ```bash
 cd reference/llvm-project
@@ -39,158 +39,152 @@ cmake -G Ninja \
 ninja
 ```
 
-以降、`clang` / `llc` は `reference/llvm-project/build/bin/` 配下を使う想定。
+After that, use `clang` / `llc` from `reference/llvm-project/build/bin/`.
 
 ## What is AMX (quick notes)
 
-AMX は CPU から命令を発行し、専用実行ユニット側で計算する形式のアクセラレータです。概念的には以下を押さえます（詳細は `reference/amx/*.md` 参照）:
+AMX issues instructions from the CPU to a dedicated execution unit. Conceptually:
 
-- レジスタファイル: X(8) + Y(8) + Z(64)（合計約 5KB）
-- 64-byte ベクトルを基本単位としてロード/ストア/演算
-- 行列（outer product）とベクトル（pointwise）両モードを持つ
-- 書き込みマスク、shuffle、indexed load 等の「特殊なオペランド形」が多い
+- Register file: X(8) + Y(8) + Z(64) (about 5KB total)
+- 64-byte vectors are the basic load/store/compute unit
+- Both matrix (outer product) and vector (pointwise) modes
+- Many special operand forms: writemasks, shuffle, indexed load, etc.
 
 ## Learning Plan (Implementation Steps)
 
-この README は「どの順序で LLVM に AMX 対応を足していくか」を管理するための手順書です。
-実装は **最小から始め、動作するテストを積み上げる**方針にします。
+This README tracks the order for adding AMX support in LLVM. The approach is to start minimal and grow tests incrementally.
 
 ---
 
-### Phase 0: Read & Verify (基礎理解と動作確認)
+### Phase 0: Read & Verify
 
-**Goal:** AMX 命令の仕様と、LLVM AArch64 backend の構造を把握する。
+**Goal:** Understand AMX and the LLVM AArch64 backend structure.
 
-- AMX仕様を読む
+- Read AMX documentation
     - `reference/amx/README.md`
     - `reference/amx/RegisterFile.md`
     - `reference/amx/Instructions.md`
-- LLVM AArch64 backend の入口を読む（眺める）
+- Skim LLVM AArch64 backend entry points
     - `llvm/lib/Target/AArch64/`
     - `AArch64InstrInfo.td`, `AArch64RegisterInfo.td`, `AArch64ISelDAGToDAG.cpp`
-- AMX 参照実装をビルドして挙動を見る（可能なら）
+- Build and run AMX reference implementation if possible
     - `reference/amx/test.c`, `perf.c`
 
 **Done criteria**
-- AMX の “X/Y/Z と outer product” が説明できる
-- LLVM の TableGen で命令定義→ISel→asm 出力の流れが説明できる
+- Can explain AMX X/Y/Z registers and outer product
+- Can explain the TableGen -> ISel -> asm flow
 
 ---
 
 ### Phase 1: Minimal Intrinsics (`set` / `clr`)
 
-**Goal:** clang builtin → LLVM intrinsic → AArch64 MC/asm 出力 のパイプラインを通す。
+**Goal:** Connect clang builtin -> LLVM intrinsic -> AArch64 MC/asm output.
 
-実装イメージ（実際のファイルは LLVM 側の構造に合わせて調整）:
+Implementation sketch (adjust to LLVM layout as needed):
 
-1. clang builtins を追加
+1. Add clang builtins
     - `clang/include/clang/Basic/BuiltinsAArch64.def`
-2. LLVM intrinsics を追加
+2. Add LLVM intrinsics
     - `llvm/include/llvm/IR/IntrinsicsAArch64.td`
-3. AArch64 命令定義（TableGen）を追加
+3. Add AArch64 instruction definitions (TableGen)
     - `llvm/lib/Target/AArch64/*.td`
-4. CodeGen テスト（clang, llc）を追加
+4. Add CodeGen tests (clang, llc)
     - `clang/test/CodeGen/...`
     - `llvm/test/CodeGen/AArch64/...`
 
 **Done criteria**
-- `__builtin_...amx_set()` が `amx_set`（または期待するエンコード）を出す
-- `lit` テストが通る
+- `__builtin_...amx_set()` emits `amx_set` (or expected encoding)
+- `lit` tests pass
 
 ---
 
-### Phase 2: Load/Store (`ldx/ldy/stx/sty` から)
+### Phase 2: Load/Store (`ldx/ldy/stx/sty` first)
 
-**Goal:** AMX の「64-byte span」データ移動を LLVM に載せる。  
-ここで **メモリオペランド** と **命令の複雑な即値エンコード**に慣れる。
+**Goal:** Add AMX "64-byte span" data movement. This is where complex memory operands and immediate encodings appear.
 
-- 対象候補: `ldx`, `ldy`, `stx`, `sty`
-- まずは simplest mode のみ（追加モードは後回し）
-- 生成アセンブリと、実機での簡単な sanity check を用意
+- Targets: `ldx`, `ldy`, `stx`, `sty`
+- Start with the simplest mode only (others later)
+- Verify generated assembly and simple runtime sanity checks
 
 **Done criteria**
-- “メモリ→AMX(X/Y)” と “AMX(X/Y)→メモリ” が一往復できる
-- `-O0` / `-O2` でもクラッシュせずに実行できる
+- Can round-trip memory <-> AMX X/Y
+- Runs without crashing at `-O0` and `-O2`
 
 ---
 
-### Phase 3: Extract/Move (`extrx/extry` と `extrh/extrv` の一部)
+### Phase 3: Extract/Move (`extrx/extry` and parts of `extrh/extrv`)
 
-**Goal:** Z → X/Y の移し替えや、内部データ移動を扱えるようにする。
+**Goal:** Support Z -> X/Y transfers and internal data moves.
 
-- `extrx` / `extry` は比較的単純（X↔Y）
-- `extrh` / `extrv` は write mask や shift/sat が絡むため段階的に
+- `extrx` / `extry` are relatively simple (X <-> Y)
+- `extrh` / `extrv` include writemask/shift/sat, so phase it in
 
 **Done criteria**
-- Z の内容を X/Y 経由でメモリに取り出せる
-- 最低限のテスト（固定入力→固定出力）が作れる
+- Can extract Z contents via X/Y to memory
+- Minimal tests with fixed inputs/outputs
 
 ---
 
 ### Phase 4: Compute Core (FMA outer product / vector)
 
-**Goal:** AMX の本質（outer product）を CodeGen できるようにする。
+**Goal:** Enable the core AMX compute (outer product).
 
-最初のターゲット例:
-- `fma16` または `fma32` の最小モード
-- 可能なら “vector mode (63=1)” より “matrix mode (63=0)” を優先（AMXらしさ）
+Initial target examples:
+- Minimal mode of `fma16` or `fma32`
+- Prefer matrix mode (bit 63 = 0) over vector mode (bit 63 = 1)
 
-ポイント:
-- “命令1発で Z の複数行/列を更新する” セマンティクスをどう表現するか
-    - LLVM IR intrinsic に逃がす（まずはこれが現実的）
-    - Pattern matching は後回し
+Key point:
+- One instruction updates multiple rows/cols in Z. Model it via LLVM IR intrinsics first; pattern matching can come later.
 
 **Done criteria**
-- 小さな GEMM タイル（例: 16x16 相当の一部）を AMX 命令列で計算できる
-- `reference/amx/test.c` 相当の検算ができる
+- Compute a small GEMM tile (e.g., part of 16x16) via AMX instruction sequences
+- Can validate against `reference/amx/test.c`
 
 ---
 
-### Phase 5: Indexed load / shuffle / writemask (高度オペランド)
+### Phase 5: Indexed load / shuffle / writemask (advanced operands)
 
-**Goal:** AMX の強力だが厄介なオペランド形を段階的にサポートする。
+**Goal:** Add complex operand forms incrementally.
 
-- `genlut`（indexed load 系）
-- `matfp` / `matint` / `vecfp` / `vecint` の一部モード
-- shuffle S0..S3 の取り扱い
-- writemask（7-bit / 9-bit）のモデリング
+- `genlut` (indexed load)
+- Parts of `matfp` / `matint` / `vecfp` / `vecint`
+- Shuffle S0..S3 handling
+- Writemask (7-bit / 9-bit) modeling
 
 **Done criteria**
-- 1〜2個の “複雑モード” を end-to-end で動かせる
-- 仕様を README にメモし、再現性あるテストがある
+- 1-2 complex modes work end-to-end
+- Document behavior in README and add reproducible tests
 
 ---
 
 ### Phase 6: Optimization Experiments (optional)
 
-**Goal:** “LLVM が AMX を使うべき” と判断できるようにする（学習用）。
+**Goal:** Explore when LLVM should choose AMX (learning only).
 
-- cost model（TTI）で AMX を高性能命令として扱う
-- 既存のループベクトライザ/SLP をどこまで誘導できるか観察
-- 実運用狙いではなく「どこが難しいか」を理解する
+- Cost model (TTI) treats AMX as high-performance instructions
+- Observe how loop vectorizer / SLP behaves
+- Not for production use, only to understand the challenges
 
 **Done criteria**
-- `-O2` で IR 変換や命令選択がどう変わるか説明できる
-- “intrinsic 手書き vs 自動生成” の差分を整理できる
-
----
+- Can explain IR/selection differences at `-O2`
+- Summarize manual intrinsic usage vs auto-generation
 
 ## Testing / Debug Tips
 
-- clang が出す LLVM IR を見る:
+- View LLVM IR from clang:
   ```bash
   reference/llvm-project/build/bin/clang -S -emit-llvm main.c -o main.ll
   ```
-- llc で asm を見る:
+- View asm from llc:
   ```bash
   reference/llvm-project/build/bin/llc -march=aarch64 main.ll -o main.s
   ```
-- llc のデバッグ出力:
+- llc debug output:
   ```bash
   reference/llvm-project/build/bin/llc -debug -march=aarch64 main.ll -o /dev/null
   reference/llvm-project/build/bin/llc -debug-only=isel -march=aarch64 main.ll -o /dev/null
   ```
-- lit テスト:
+- lit tests:
   ```bash
   ninja check-clang
   ninja check-llvm
@@ -198,12 +192,12 @@ AMX は CPU から命令を発行し、専用実行ユニット側で計算す�
 
 ## Notes / Risks
 
-- AMX は非公開命令のため、OS/チップ世代によって挙動が変わり得ます
-- コンテキストスイッチ等で AMX 状態の扱いが絡む可能性があります（`set`/`clr` の意味も含めて注意）
-- upstream 目標ではなく、学習に主眼を置きます
+- AMX is undocumented; behavior may vary across OS and chip generations
+- Context switching and AMX state handling may matter (including `set`/`clr` semantics)
+- Not intended for upstream LLVM
 
 ## References
 
 - AMX reverse engineering: `reference/amx`
 - LLVM monorepo: `reference/llvm-project`
-- `reference/amx/References.md` も参照
+- See also `reference/amx/References.md`
