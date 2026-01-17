@@ -18,6 +18,8 @@
   ```bash
   ./cmake-build-debug/c_amx
   ```
+## Execution Requirement
+- After making code changes, always run the relevant build and execute the binary to verify behavior, then check the results.
 - Build LLVM (used for AMX backend experiments) from `reference/llvm-project`:
   ```bash
   cmake -S reference/llvm-project/llvm -B reference/llvm-project/build -G Ninja \
