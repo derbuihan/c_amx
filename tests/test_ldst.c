@@ -5,7 +5,15 @@
 #include "amx_asm.h"
 #include "amx_util.h"
 
-static int amx_test_ldst_xy(void)
+static int amx_test_set_clr(void)
+{
+    amx_set();
+    amx_clr();
+    printf("AMX set/clr test passed.\n");
+    return 0;
+}
+
+static int amx_test_ldx_stx(void)
 {
     __attribute__((aligned(64))) uint8_t src[64];
     __attribute__((aligned(64))) uint8_t dst[64];
@@ -22,28 +30,47 @@ static int amx_test_ldst_xy(void)
 
     if (memcmp(src, dst, sizeof(src)) != 0) {
         printf("AMX ldx/stx mismatch.\n");
-        return 0;
+        return 1;
     }
 
-    memset(dst, 0, sizeof(dst));
+    printf("AMX ldx/stx test passed.\n");
+    return 0;
+}
+
+static int amx_test_ldy_sty(void)
+{
+    __attribute__((aligned(64))) uint8_t src[64];
+    __attribute__((aligned(64))) uint8_t dst[64];
+
+    for (uint32_t i = 0; i < 64; i++) {
+        src[i] = (uint8_t)(i ^ 0x5A);
+        dst[i] = 0;
+    }
 
     amx_set();
     amx_ldy(amx_xy_operand(src, 0));
     amx_sty(amx_xy_operand(dst, 0));
     amx_clr();
-
     if (memcmp(src, dst, sizeof(src)) != 0) {
         printf("AMX ldy/sty mismatch.\n");
-        return 0;
+        return 1;
     }
 
-    printf("AMX ldx/stx/ldy/sty test passed.\n");
-    return 1;
+    printf("AMX ldy/sty test passed.\n");
+    return 0;
 }
 
 int main(void)
 {
-    if (!amx_test_ldst_xy()) {
+    if (amx_test_set_clr() != 0) {
+        return 1;
+    }
+
+    if (amx_test_ldx_stx() != 0) {
+        return 1;
+    }
+
+    if (amx_test_ldy_sty() != 0) {
         return 1;
     }
 
