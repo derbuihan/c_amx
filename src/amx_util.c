@@ -4,3 +4,8 @@ uint64_t amx_xy_operand(const void *ptr, uint32_t reg)
 {
     return (((uint64_t)reg) << 56) | ((uint64_t)ptr & 0x00FFFFFFFFFFFFFFull);
 }
+
+uint64_t amx_z_operand(const void *ptr, uint32_t row)
+{
+    return (((uint64_t)row) << 56) | ((uint64_t)ptr & 0x00FFFFFFFFFFFFFFull);
+}

@@ -24,15 +24,15 @@ int main(void)
         {13, 14, 15, 16}
     };
     float data2[4][4] = {0};
-    uint64_t operand = amx_xy_operand(data, 0);
-    uint64_t operand2 = amx_xy_operand(data2, 0);
+    uint64_t operand = amx_z_operand(data, 0);
+    uint64_t operand2 = amx_z_operand(data2, 0);
 
     print_data(data2);
 
     printf("AMX LDX demo (x0 operand).\n");
     amx_set();
-    amx_ldx(operand);
-    amx_stx(operand2);
+    amx_ldz(operand);
+    amx_stz(operand2);
     amx_clr();
     printf("AMX LDX issued.\n");
 
