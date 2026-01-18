@@ -1,8 +1,9 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `main.c` holds the sample entry point (currently a minimal hello-world).
-- `CMakeLists.txt` defines the CMake build for the `c_amx` executable.
+- `src/main.c` holds the sample entry point (AMX load/store demo).
+- `src/amx_util.c` / `src/amx_util.h` hold shared operand helpers.
+- `CMakeLists.txt` defines the CMake build for the `c_amx` and `c_amx_tests` executables.
 - `reference/` stores external sources used for study:
   - `reference/amx` mirrors the AMX reverse‑engineering notes.
   - `reference/llvm-project` is a local LLVM monorepo checkout for backend work.
@@ -38,7 +39,7 @@
 - Keep experimental scripts or notes inside `reference/` to avoid mixing with buildable sources.
 
 ## Testing Guidelines
-- This repo currently has no dedicated test suite.
+- Tests live under `tests/` and build into `c_amx_tests`.
 - For LLVM backend validation, use `lit` from the LLVM build:
   ```bash
   ninja -C reference/llvm-project/build check-clang

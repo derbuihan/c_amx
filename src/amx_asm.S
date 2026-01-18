@@ -26,3 +26,13 @@ _amx_ldx:
 _amx_stx:
     .word (0x201000 + (2 << 5) + 0)
     ret
+
+.global _amx_ldy
+_amx_ldy:
+    .word (0x201000 + (1 << 5) + 0)
+    ret
+
+.global _amx_sty
+_amx_sty:
+    .word (0x201000 + (3 << 5) + 0)
+    ret

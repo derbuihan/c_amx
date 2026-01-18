@@ -13,11 +13,11 @@ This repository is for studying Apple Silicon AMX (Apple Matrix Extensions) and 
 ├── CMakeLists.txt
 ├── README.md
 ├── src
-│   ├── amx_matmul.c
-│   ├── amx_matmul.h
+│   ├── amx_asm.S
+│   ├── amx_asm.h
 │   └── main.c
 ├── tests
-│   └── test_matmul.c
+│   └── test_ldst.c
 └── reference
     ├── amx          # https://github.com/corsix/amx
     └── llvm-project # https://github.com/llvm/llvm-project

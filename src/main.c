@@ -1,13 +1,8 @@
-#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "amx_asm.h"
-
-static uint64_t amx_xy_operand(const void *ptr, uint32_t reg)
-{
-    return (((uint64_t)reg) << 56) | ((uint64_t)ptr & 0x00FFFFFFFFFFFFFFull);
-}
+#include "amx_util.h"
 
 void print_data(float data[4][4])
 {
